@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PartSnap
 
-## Getting Started
+Photo → listing tool for salvage yards. An employee photographs a part, GPT-4o Vision
+identifies it (name, category, compatible makes, year range, condition, suggested price),
+and PartSnap pre-fills a listing card the employee reviews, corrects, and saves.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, Turbopack) + React 19
+- **Supabase** — Postgres, Auth (email + Google OAuth), Storage (`part-photos` bucket)
+- **OpenAI GPT-4o Vision** — part identification
+- **Tailwind CSS v4**
+
+## Architecture
+
+| Path | Purpose |
+|------|---------|
+| `app/login` | Email/password + Google OAuth sign-in |
+| `app/onboarding` | Create a shop (via the `create_shop` RPC) |
+| `app/dashboard` | Shop home; entry point to list a part |
+| `app/list` | Capture/upload a photo → identify → review → save |
+| `app/api/identify` | Auth-gated route: downloads the photo, calls GPT-4o, returns structured output |
+| `lib/identify.ts` | GPT-4o Vision call + canonical prompt |
+| `lib/supabase/` | Browser, server, and proxy Supabase clients |
+| `proxy.ts` | Session refresh + auth redirects (Next 16 renamed Middleware → Proxy) |
+
+The database uses a **multi-member model**: a `shops` table, a `shop_members` join table
+(roles: owner/editor/viewer), and `listings`. Shop creation goes through the
+`create_shop()` SECURITY DEFINER function; row access is gated by the `is_shop_member()`
+helper in RLS policies.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then fill in the values below
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Var | Where it's used |
+|-----|-----------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server Supabase client |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only admin operations (never exposed) |
+| `OPENAI_API_KEY` | GPT-4o Vision (`/api/identify`) |
+| `ADMIN_EMAIL` | API-error alerts (planned) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`.env.local` is gitignored — never commit real keys.
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run dev     # dev server (Turbopack)
+npm run build   # production build
+npm run start   # serve the production build
+npm run lint    # eslint
+```
