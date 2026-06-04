@@ -122,12 +122,12 @@ export default function ListPartPage() {
   }
 
   return (
-    <main className="min-h-dvh bg-gray-50">
-      <header className="flex items-center gap-3 border-b border-gray-200 bg-white px-5 py-4">
-        <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-900">
+    <main className="cs-surface min-h-dvh">
+      <header className="flex items-center gap-3 border-b border-slate-200/70 bg-white/70 px-5 py-4 backdrop-blur">
+        <Link href="/dashboard" className="text-sm text-slate-500 transition hover:text-ink">
           ← Back
         </Link>
-        <h1 className="text-base font-semibold text-gray-900">List a Part</h1>
+        <h1 className="text-base font-semibold text-ink">List a part</h1>
       </header>
 
       <div className="mx-auto w-full max-w-sm px-5 py-8">
@@ -147,9 +147,9 @@ export default function ListPartPage() {
             />
             <label
               htmlFor="photo-input"
-              className="block w-full cursor-pointer rounded-xl bg-gray-900 px-4 py-5 text-lg font-semibold text-white"
+              className="cs-btn block w-full cursor-pointer rounded-2xl px-4 py-6 text-lg font-semibold text-white"
             >
-              📷 Take / choose photo
+              📷 Take or choose a photo
             </label>
             <button
               type="button"
@@ -171,7 +171,7 @@ export default function ListPartPage() {
             />
             <button
               onClick={uploadAndIdentify}
-              className="w-full rounded-xl bg-gray-900 px-4 py-4 text-lg font-semibold text-white"
+              className="cs-btn w-full rounded-xl px-4 py-4 text-lg font-semibold text-white"
             >
               Use this photo
             </button>
@@ -186,8 +186,8 @@ export default function ListPartPage() {
 
         {phase === "identifying" && (
           <div className="flex flex-col items-center gap-4 py-16 text-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-900" />
-            <p className="text-base font-medium text-gray-900">Identifying part…</p>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-100 border-t-brand-600" />
+            <p className="text-base font-medium text-ink">Identifying part…</p>
             {slow && (
               <p className="text-sm text-gray-500">
                 Taking longer than usual — hang tight.

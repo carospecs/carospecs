@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PartSnap — Photo to listing for salvage yards",
+  title: "CaroSpecs — Photo to listing for salvage yards",
   description:
     "Snap a photo of a part, let AI identify it, and post a ready-to-list card in seconds.",
 };

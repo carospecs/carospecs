@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { Logo } from "@/app/_components/logo";
 import { createShop } from "./actions";
 
 export default async function OnboardingPage({
@@ -25,13 +26,17 @@ export default async function OnboardingPage({
   if (shop) redirect("/dashboard");
 
   return (
-    <main className="flex min-h-dvh flex-col justify-center bg-gray-50 px-5 py-10">
-      <div className="mx-auto w-full max-w-sm">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+    <main className="cs-surface flex min-h-dvh flex-col">
+      <header className="px-5 py-5 sm:px-8">
+        <Logo size="sm" />
+      </header>
+      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-5 pb-12">
+        <div className="mb-7">
+          <p className="text-sm font-medium text-brand-600">Step 1 of 1</p>
+          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-ink">
             Set up your shop
           </h1>
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-slate-500">
             This appears on every listing you create.
           </p>
         </div>
@@ -42,7 +47,7 @@ export default async function OnboardingPage({
           </p>
         )}
 
-        <form action={createShop} className="space-y-4">
+        <form action={createShop} className="cs-card space-y-4 rounded-2xl p-6">
           <div>
             <label
               htmlFor="name"
@@ -56,7 +61,7 @@ export default async function OnboardingPage({
               type="text"
               required
               placeholder="Garcia Auto Salvage"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none focus:border-gray-900"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
             />
           </div>
 
@@ -72,7 +77,7 @@ export default async function OnboardingPage({
               name="location"
               type="text"
               placeholder="Austin, TX"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none focus:border-gray-900"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
             />
           </div>
 
@@ -89,13 +94,13 @@ export default async function OnboardingPage({
               type="tel"
               inputMode="tel"
               placeholder="(512) 555-0142"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900 outline-none focus:border-gray-900"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-base font-semibold text-white transition hover:bg-gray-800"
+            className="cs-btn w-full rounded-xl px-4 py-3 text-base font-semibold text-white"
           >
             Create shop
           </button>

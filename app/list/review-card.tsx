@@ -93,14 +93,16 @@ export function ReviewCard({
   if (saved) {
     return (
       <div className="space-y-4 py-10 text-center">
-        <div className="text-4xl">✅</div>
-        <p className="text-lg font-semibold text-gray-900">Saved as draft</p>
-        <p className="text-sm text-gray-500">
-          Formatted listing text + copy-to-clipboard arrives in Step 5.
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-3xl">
+          ✓
+        </div>
+        <p className="text-lg font-semibold text-ink">Saved as draft</p>
+        <p className="text-sm text-slate-500">
+          Your listing is saved. Post it to your marketplace, or list the next part.
         </p>
         <button
           onClick={onReset}
-          className="w-full rounded-xl bg-gray-900 px-4 py-3 text-base font-semibold text-white"
+          className="cs-btn w-full rounded-xl px-4 py-3 text-base font-semibold text-white"
         >
           List another part
         </button>
@@ -267,7 +269,7 @@ export function ReviewCard({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full rounded-xl bg-gray-900 px-4 py-4 text-lg font-semibold text-white disabled:opacity-60"
+          className="cs-btn w-full rounded-xl px-4 py-4 text-lg font-semibold text-white disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save listing"}
         </button>
