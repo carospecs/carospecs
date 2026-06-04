@@ -1,69 +1,83 @@
-// Canonical AI output schema — mirrors CLAUDE.md. Do not deviate.
+// Canonical AI output schema for the vehicle-intake flow.
+// Multiple photos of one car -> vehicle identity + a list of visible parts.
 export type Condition = "good" | "fair" | "poor";
 export type Confidence = "high" | "low";
 
-export interface AiOutput {
-  part_name: string;
-  part_category: string;
-  make_compatibility: string[];
-  year_range: string | null;
-  condition: Condition;
-  suggested_price: number | null;
-  confidence: Confidence;
-  vin: string | null;
-}
-
 const CONDITIONS: Condition[] = ["good", "fair", "poor"];
 
-// Coerce whatever GPT-4o returned into the canonical shape. Never throws.
-// Per spec: never return null for part_name or condition; if unsure, confidence "low".
-export function normalizeAiOutput(raw: unknown): AiOutput {
-  const o = (raw ?? {}) as Record<string, unknown>;
+export interface VehicleInfo {
+  make: string | null;
+  model: string | null;
+  year_range: string | null;
+  trim: string | null;
+  body_style: string | null;
+  vin: string | null;
+  confidence: Confidence;
+}
 
-  const part_name =
-    typeof o.part_name === "string" && o.part_name.trim()
-      ? o.part_name.trim()
-      : "Unknown";
+export interface PartAssessment {
+  part_name: string;
+  part_category: string;
+  condition: Condition;
+  condition_notes: string | null;
+  suggested_price: number | null;
+  confidence: Confidence;
+}
 
-  const part_category =
-    typeof o.part_category === "string" && o.part_category.trim()
-      ? o.part_category.trim()
-      : "Unknown";
+export interface VehicleReport {
+  vehicle: VehicleInfo;
+  parts: PartAssessment[];
+}
 
-  const make_compatibility = Array.isArray(o.make_compatibility)
-    ? o.make_compatibility.filter((m): m is string => typeof m === "string")
-    : [];
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
 
-  const year_range =
-    typeof o.year_range === "string" && o.year_range.trim()
-      ? o.year_range.trim()
-      : null;
-
-  const condition: Condition = CONDITIONS.includes(o.condition as Condition)
-    ? (o.condition as Condition)
-    : "fair";
-
-  let suggested_price: number | null = null;
-  if (typeof o.suggested_price === "number" && isFinite(o.suggested_price)) {
-    suggested_price = o.suggested_price;
-  } else if (typeof o.suggested_price === "string") {
-    const n = parseFloat(o.suggested_price.replace(/[^0-9.]/g, ""));
-    suggested_price = isFinite(n) ? n : null;
+function price(v: unknown): number | null {
+  if (typeof v === "number" && isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v.replace(/[^0-9.]/g, ""));
+    return isFinite(n) ? n : null;
   }
+  return null;
+}
 
-  const confidence: Confidence = o.confidence === "high" ? "high" : "low";
+function condition(v: unknown): Condition {
+  return CONDITIONS.includes(v as Condition) ? (v as Condition) : "fair";
+}
 
-  const vin =
-    typeof o.vin === "string" && o.vin.trim() ? o.vin.trim() : null;
+function confidence(v: unknown): Confidence {
+  return v === "high" ? "high" : "low";
+}
+
+export function normalizePart(raw: unknown): PartAssessment {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    part_name: str(o.part_name) ?? "Unknown part",
+    part_category: str(o.part_category) ?? "Unknown",
+    condition: condition(o.condition),
+    condition_notes: str(o.condition_notes),
+    suggested_price: price(o.suggested_price),
+    confidence: confidence(o.confidence),
+  };
+}
+
+// Coerce whatever GPT-4o returned into the canonical shape. Never throws.
+export function normalizeVehicleReport(raw: unknown): VehicleReport {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const v = (o.vehicle ?? {}) as Record<string, unknown>;
+  const partsRaw = Array.isArray(o.parts) ? o.parts : [];
 
   return {
-    part_name,
-    part_category,
-    make_compatibility,
-    year_range,
-    condition,
-    suggested_price,
-    confidence,
-    vin,
+    vehicle: {
+      make: str(v.make),
+      model: str(v.model),
+      year_range: str(v.year_range),
+      trim: str(v.trim),
+      body_style: str(v.body_style),
+      vin: str(v.vin),
+      confidence: confidence(v.confidence),
+    },
+    parts: partsRaw.map(normalizePart),
   };
 }

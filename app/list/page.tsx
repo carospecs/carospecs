@@ -3,91 +3,68 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { AiOutput } from "@/lib/types";
-import { ReviewCard } from "./review-card";
+import type { VehicleReport } from "@/lib/types";
+import { VehicleReportCard } from "./vehicle-report";
 
-type Phase = "capture" | "preview" | "identifying" | "result" | "error";
+type Phase = "capture" | "analyzing" | "result" | "error";
+type Photo = { file: File; url: string };
 
-const BLANK_OUTPUT: AiOutput = {
-  part_name: "",
-  part_category: "",
-  make_compatibility: [],
-  year_range: null,
-  condition: "fair",
-  suggested_price: null,
-  confidence: "low",
-  vin: null,
-};
+const MAX_PHOTOS = 8;
+const SUGGESTED = ["Front", "Rear", "Driver side", "Passenger side", "Interior", "VIN plate"];
 
-export default function ListPartPage() {
+export default function ListVehiclePage() {
   const [phase, setPhase] = useState<Phase>("capture");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [uploadedPath, setUploadedPath] = useState<string | null>(null);
-  const [result, setResult] = useState<AiOutput | null>(null);
-  const [manual, setManual] = useState(false);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [report, setReport] = useState<VehicleReport | null>(null);
+  const [photoPaths, setPhotoPaths] = useState<string[]>([]);
   const [slow, setSlow] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Revoke object URLs on unmount.
   useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
+    return () => photos.forEach((p) => URL.revokeObjectURL(p.url));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (phase !== "identifying") return;
-    const t = setTimeout(() => setSlow(true), 15000);
+    if (phase !== "analyzing") return;
+    const t = setTimeout(() => setSlow(true), 20000);
     return () => clearTimeout(t);
   }, [phase]);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(f);
-    setPreviewUrl(URL.createObjectURL(f));
-    setUploadedPath(null);
-    setPhase("preview");
-  }
-
-  function retake() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(null);
-    setPreviewUrl(null);
-    setUploadedPath(null);
-    setResult(null);
-    setManual(false);
-    setPhase("capture");
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    setPhotos((prev) => {
+      const next = [...prev];
+      for (const f of picked) {
+        if (next.length >= MAX_PHOTOS) break;
+        next.push({ file: f, url: URL.createObjectURL(f) });
+      }
+      return next;
+    });
     if (fileInput.current) fileInput.current.value = "";
   }
 
-  // Calls the identify API for an already-uploaded photo.
-  async function runIdentify(path: string) {
-    setSlow(false);
-    setPhase("identifying");
-    try {
-      const res = await fetch("/api/identify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-      if (!res.ok) throw new Error(`identify ${res.status}`);
-      const json = (await res.json()) as { ai_output: AiOutput };
-      setResult(json.ai_output);
-      setManual(false);
-      setPhase("result");
-    } catch (err) {
-      console.error(err);
-      setPhase("error");
-    }
+  function removePhoto(i: number) {
+    setPhotos((prev) => {
+      URL.revokeObjectURL(prev[i].url);
+      return prev.filter((_, idx) => idx !== i);
+    });
   }
 
-  // Uploads the photo, then identifies it.
-  async function uploadAndIdentify() {
-    if (!file) return;
+  function startOver() {
+    photos.forEach((p) => URL.revokeObjectURL(p.url));
+    setPhotos([]);
+    setReport(null);
+    setPhotoPaths([]);
+    setPhase("capture");
+  }
+
+  async function analyze() {
+    if (photos.length === 0) return;
     setSlow(false);
-    setPhase("identifying");
+    setPhase("analyzing");
     try {
       const supabase = createClient();
       const {
@@ -98,27 +75,33 @@ export default function ListPartPage() {
         return;
       }
 
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+      const group = crypto.randomUUID();
+      const paths: string[] = [];
+      for (let i = 0; i < photos.length; i++) {
+        const f = photos[i].file;
+        const ext = f.name.split(".").pop()?.toLowerCase() || "jpg";
+        const path = `${user.id}/${group}/${i}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("part-photos")
+          .upload(path, f, { contentType: f.type, upsert: false });
+        if (upErr) throw upErr;
+        paths.push(path);
+      }
 
-      const { error: upErr } = await supabase.storage
-        .from("part-photos")
-        .upload(path, file, { contentType: file.type, upsert: false });
-      if (upErr) throw upErr;
-
-      setUploadedPath(path);
-      await runIdentify(path);
+      const res = await fetch("/api/identify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      if (!res.ok) throw new Error(`identify ${res.status}`);
+      const json = (await res.json()) as { report: VehicleReport };
+      setReport(json.report);
+      setPhotoPaths(paths);
+      setPhase("result");
     } catch (err) {
       console.error(err);
       setPhase("error");
     }
-  }
-
-  function enterManually() {
-    // Photo may already be uploaded (upload precedes identify); keep it if so.
-    setResult(BLANK_OUTPUT);
-    setManual(true);
-    setPhase("result");
   }
 
   return (
@@ -127,107 +110,106 @@ export default function ListPartPage() {
         <Link href="/dashboard" className="text-sm text-slate-500 transition hover:text-ink">
           ← Back
         </Link>
-        <h1 className="text-base font-semibold text-ink">List a part</h1>
+        <h1 className="text-base font-semibold text-ink">Add a vehicle</h1>
       </header>
 
-      <div className="mx-auto w-full max-w-sm px-5 py-8">
+      <div className="mx-auto w-full max-w-md px-5 py-8">
         {phase === "capture" && (
-          <div className="space-y-6 text-center">
-            <p className="text-sm text-gray-500">
-              Take a photo of the part. One clear shot works best.
-            </p>
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">Photograph the car</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Add 4–6 clear photos from different angles. We&apos;ll identify the
+                vehicle and grade the visible parts.
+              </p>
+            </div>
+
             <input
               ref={fileInput}
               type="file"
               accept="image/*"
               capture="environment"
+              multiple
               onChange={onPick}
               className="hidden"
               id="photo-input"
             />
-            <label
-              htmlFor="photo-input"
-              className="cs-btn block w-full cursor-pointer rounded-2xl px-4 py-6 text-lg font-semibold text-white"
-            >
-              📷 Take or choose a photo
-            </label>
+
+            <div className="grid grid-cols-3 gap-3">
+              {photos.map((p, i) => (
+                <div
+                  key={p.url}
+                  className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(i)}
+                    aria-label="Remove photo"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-sm text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <label
+                  htmlFor="photo-input"
+                  className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-brand-500 hover:text-brand-600"
+                >
+                  <span className="text-2xl leading-none">＋</span>
+                  <span className="text-xs font-medium">Add</span>
+                </label>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Suggested: {SUGGESTED.join(" · ")}
+            </p>
+
             <button
-              type="button"
-              onClick={enterManually}
-              className="text-sm text-gray-500 underline"
+              onClick={analyze}
+              disabled={photos.length === 0}
+              className="cs-btn w-full rounded-2xl px-4 py-5 text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Enter manually instead
+              {photos.length === 0
+                ? "Add photos to continue"
+                : `Analyze vehicle (${photos.length} photo${photos.length > 1 ? "s" : ""})`}
             </button>
           </div>
         )}
 
-        {phase === "preview" && previewUrl && (
-          <div className="space-y-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={previewUrl}
-              alt="Part preview"
-              className="w-full rounded-xl border border-gray-200 object-contain"
-            />
-            <button
-              onClick={uploadAndIdentify}
-              className="cs-btn w-full rounded-xl px-4 py-4 text-lg font-semibold text-white"
-            >
-              Use this photo
-            </button>
-            <button
-              onClick={retake}
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base font-medium text-gray-700"
-            >
-              Retake
-            </button>
-          </div>
-        )}
-
-        {phase === "identifying" && (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
+        {phase === "analyzing" && (
+          <div className="flex flex-col items-center gap-4 py-20 text-center">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-100 border-t-brand-600" />
-            <p className="text-base font-medium text-ink">Identifying part…</p>
-            {slow && (
-              <p className="text-sm text-gray-500">
-                Taking longer than usual — hang tight.
-              </p>
-            )}
+            <p className="text-base font-medium text-ink">Identifying the vehicle…</p>
+            <p className="text-sm text-slate-500">
+              {slow ? "Still working — analyzing all angles." : "Reading the photos."}
+            </p>
           </div>
         )}
 
-        {phase === "result" && result && (
-          <ReviewCard
-            aiOutput={result}
-            photoPath={uploadedPath}
-            previewUrl={previewUrl}
-            manual={manual}
-            onReset={retake}
-          />
+        {phase === "result" && report && (
+          <VehicleReportCard report={report} photoPaths={photoPaths} onReset={startOver} />
         )}
 
         {phase === "error" && (
-          <div className="space-y-4 py-10 text-center">
-            <p className="text-base font-medium text-gray-900">
-              Having trouble right now — try again in a few minutes.
+          <div className="space-y-4 py-16 text-center">
+            <p className="text-base font-medium text-ink">
+              Having trouble analyzing those photos — try again.
             </p>
             <button
-              onClick={() => (uploadedPath ? runIdentify(uploadedPath) : uploadAndIdentify())}
-              className="w-full rounded-xl bg-gray-900 px-4 py-3 text-base font-semibold text-white"
+              onClick={analyze}
+              className="cs-btn w-full rounded-xl px-4 py-3 text-base font-semibold text-white"
             >
               Try again
             </button>
             <button
-              onClick={enterManually}
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base font-medium text-gray-700"
+              onClick={startOver}
+              className="block w-full text-sm text-slate-500 underline"
             >
-              Enter manually
-            </button>
-            <button
-              onClick={retake}
-              className="block w-full text-sm text-gray-500 underline"
-            >
-              Use a different photo
+              Use different photos
             </button>
           </div>
         )}

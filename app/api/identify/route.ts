@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { identifyPart } from "@/lib/identify";
+import { identifyVehicle } from "@/lib/identify";
 
-export const maxDuration = 30; // GPT-4o Vision can take a few seconds.
+export const maxDuration = 60; // Several images through GPT-4o Vision takes longer.
 
-// POST { path: string }  ->  { ai_output, photo_path }
-// `path` is a storage object key the client just uploaded, e.g. "{uid}/abc.jpg".
+// POST { paths: string[] }  ->  { report, photo_paths }
+// `paths` are storage object keys the client just uploaded, all under "{uid}/...".
 export async function POST(request: Request) {
   const supabase = await createClient();
 
@@ -16,40 +16,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let path: unknown;
+  let paths: unknown;
   try {
-    ({ path } = await request.json());
+    ({ paths } = await request.json());
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  if (typeof path !== "string" || !path) {
-    return NextResponse.json({ error: "missing_path" }, { status: 400 });
+  if (
+    !Array.isArray(paths) ||
+    paths.length === 0 ||
+    !paths.every((p) => typeof p === "string" && p)
+  ) {
+    return NextResponse.json({ error: "missing_paths" }, { status: 400 });
+  }
+  if (paths.length > 8) {
+    return NextResponse.json({ error: "too_many_photos" }, { status: 400 });
   }
 
-  // Defense in depth: a user may only identify photos in their own folder.
-  if (!path.startsWith(`${user.id}/`)) {
+  // Defense in depth: a user may only read photos in their own folder.
+  if (!paths.every((p: string) => p.startsWith(`${user.id}/`))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const { data: blob, error: dlError } = await supabase.storage
-    .from("part-photos")
-    .download(path);
-
-  if (dlError || !blob) {
-    return NextResponse.json({ error: "photo_not_found" }, { status: 404 });
+  const dataUrls: string[] = [];
+  for (const path of paths as string[]) {
+    const { data: blob, error: dlError } = await supabase.storage
+      .from("part-photos")
+      .download(path);
+    if (dlError || !blob) {
+      return NextResponse.json({ error: "photo_not_found" }, { status: 404 });
+    }
+    const base64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
+    const mime = blob.type || "image/jpeg";
+    dataUrls.push(`data:${mime};base64,${base64}`);
   }
 
-  const base64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
-  const mime = blob.type || "image/jpeg";
-  const dataUrl = `data:${mime};base64,${base64}`;
-
   try {
-    const ai_output = await identifyPart(dataUrl);
-    return NextResponse.json({ ai_output, photo_path: path });
+    const report = await identifyVehicle(dataUrls);
+    return NextResponse.json({ report, photo_paths: paths });
   } catch (err) {
-    // Step 6 adds the silent admin-email alert here. For now, log + friendly error.
-    console.error("[identify] GPT-4o call failed:", err);
+    console.error("[identify] GPT-4o vehicle call failed:", err);
     return NextResponse.json({ error: "identify_failed" }, { status: 502 });
   }
 }
