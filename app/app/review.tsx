@@ -7,15 +7,18 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { TriangleAlert } from "lucide-react-native";
 import type { AIPartOutput } from "@carospecs/shared";
-import { colors, space, font } from "@/theme";
+import { colors, space, font, radius } from "@/theme";
 import { Button } from "@/components/Button";
 import {
   PartReviewCard,
   draftFromAI,
+  forceSide,
+  stripSide,
   type PartDraft,
 } from "@/components/ReviewCard";
 import { getPendingCapture, clearPendingCapture } from "@/lib/captureStore";
@@ -35,7 +38,34 @@ export default function Review() {
   const pending = getPendingCapture();
   const [state, setState] = useState<State>({ phase: "loading" });
   const [drafts, setDrafts] = useState<PartDraft[]>([]);
+  const [vehicleSide, setVehicleSide] = useState<"LH" | "RH" | "ai" | null>(
+    null
+  );
   const [saving, setSaving] = useState(false);
+
+  // The lister sets which side of the vehicle this photo shows; we then lock
+  // that side onto every detected part (re-derived from the AI's original name
+  // so toggling is reversible). The model's own L/R guess is unreliable, so this
+  // is the accurate path. "Not sure" falls back to the AI guess.
+  function applyVehicleSide(side: "LH" | "RH" | "ai" | null) {
+    if (state.phase !== "ready") return;
+    const ais = state.ais;
+    setVehicleSide(side);
+    setDrafts((prev) =>
+      prev.map((d, i) => {
+        const base = stripSide(ais[i].partName);
+        const partName =
+          side === "ai"
+            ? ais[i].partName // opt into the AI's (unreliable) guess
+            : side === "LH"
+            ? forceSide(base, "Left")
+            : side === "RH"
+            ? forceSide(base, "Right")
+            : base; // null → sideless (gated default)
+        return { ...d, partName };
+      })
+    );
+  }
 
   async function run() {
     if (!pending) {
@@ -57,7 +87,15 @@ export default function Review() {
       });
       return;
     }
-    setDrafts(result.data.map(draftFromAI));
+    // Gate: drop the AI's unreliable L/R by default — parts start sideless until
+    // the lister sets the vehicle side (or opts into the AI guess).
+    setDrafts(
+      result.data.map((d) => ({
+        ...draftFromAI(d),
+        partName: stripSide(d.partName),
+      }))
+    );
+    setVehicleSide(null);
     setState({ phase: "ready", ais: result.data });
   }
 
@@ -172,6 +210,54 @@ export default function Review() {
               {state.ais.length} part{state.ais.length === 1 ? "" : "s"} found —
               review, edit, and pick which to list.
             </Text>
+
+            <View style={styles.sideBar}>
+              <Text style={styles.sideTitle}>Which side of the vehicle?</Text>
+              <View style={styles.sideRow}>
+                {(
+                  [
+                    { k: "LH" as const, label: "Driver (L)" },
+                    { k: "RH" as const, label: "Passenger (R)" },
+                    { k: "ai" as const, label: "Use AI guess" },
+                  ]
+                ).map((opt) => {
+                  const sel = vehicleSide === opt.k;
+                  return (
+                    <Pressable
+                      key={String(opt.k)}
+                      onPress={() => applyVehicleSide(opt.k)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: sel }}
+                      style={[styles.sideBtn, sel && styles.sideBtnSel]}
+                    >
+                      <Text
+                        style={[styles.sideBtnText, sel && styles.sideBtnTextSel]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {vehicleSide === null ? (
+                <View style={styles.sideNudge}>
+                  <TriangleAlert size={14} color={colors.signal} />
+                  <Text style={styles.sideNudgeText}>
+                    Pick the side — the AI can&apos;t reliably tell left from
+                    right, so parts are listed without a side until you set it.
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.sideHint}>
+                  {vehicleSide === "ai"
+                    ? "Using the AI's left/right guess — it's often wrong, so double-check each part."
+                    : `Locked to ${
+                        vehicleSide === "LH" ? "driver (left)" : "passenger (right)"
+                      } side for every part.`}
+                </Text>
+              )}
+            </View>
+
             {drafts.map((d, i) => (
               <PartReviewCard
                 key={i}
@@ -218,6 +304,41 @@ const styles = StyleSheet.create({
     fontSize: font.small,
     lineHeight: 20,
   },
+  sideBar: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    padding: space.md,
+    gap: space.sm,
+  },
+  sideTitle: { color: colors.foreground, fontSize: font.body, fontWeight: "700" },
+  sideRow: { flexDirection: "row", gap: space.sm },
+  sideBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: space.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface2,
+  },
+  sideBtnSel: { backgroundColor: colors.accent, borderColor: colors.accent },
+  sideBtnText: { color: colors.muted, fontSize: font.small, fontWeight: "600" },
+  sideBtnTextSel: { color: colors.white },
+  sideHint: { color: colors.muted, fontSize: font.tiny, lineHeight: 18 },
+  sideNudge: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: space.sm,
+    backgroundColor: colors.signalBg,
+    borderWidth: 1,
+    borderColor: colors.signal,
+    borderRadius: radius.sm,
+    padding: space.sm,
+  },
+  sideNudgeText: { color: colors.signal, fontSize: font.tiny, flex: 1, lineHeight: 18 },
   centered: {
     flex: 1,
     alignItems: "center",

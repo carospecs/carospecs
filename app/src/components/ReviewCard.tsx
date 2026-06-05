@@ -48,6 +48,29 @@ export function swapSide(name: string): string {
   return `Left ${name}`;
 }
 
+/** Remove any Left/Right word from a part name → sideless (e.g. "Front Door"). */
+export function stripSide(name: string): string {
+  return name
+    .replace(/\b(left|right)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Force a specific Left/Right side onto a part name (used by the side toggle). */
+export function forceSide(name: string, side: "Left" | "Right"): string {
+  if (/\b(left|right)\b/i.test(name)) {
+    return name.replace(/\b(left|right)\b/i, (m) =>
+      m[0] === m[0].toUpperCase() ? side : side.toLowerCase()
+    );
+  }
+  const m = name.match(/^(Front|Rear)\b\s*(.*)$/i);
+  if (m) {
+    const rest = m[2].trim();
+    return `${m[1]} ${side}${rest ? ` ${rest}` : ""}`;
+  }
+  return `${side} ${name}`;
+}
+
 /** Seed an editable draft from a raw AI part output. */
 export function draftFromAI(ai: AIPartOutput): PartDraft {
   return {

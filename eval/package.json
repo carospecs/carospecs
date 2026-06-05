@@ -1,0 +1,10 @@
+{
+  "name": "@carospecs/eval",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 vision eval harness — L/R side accuracy referee.",
+  "scripts": {
+    "collect": "node collect.ts",
+    "run": "node run.ts"
+  }
+}

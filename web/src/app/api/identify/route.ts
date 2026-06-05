@@ -21,7 +21,7 @@ export const maxDuration = 60;
  * On failure the shop sees a calm "high demand, try again" message (never a raw
  * error, never "couldn't identify"), and the team gets an email alert.
  */
-export async function POST(req: Request): Promise<NextResponse<AIResult>> {
+export async function POST(req: Request): Promise<NextResponse> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
     await alertTeam("OPENAI_API_KEY missing on server");
@@ -115,6 +115,14 @@ export async function POST(req: Request): Promise<NextResponse<AIResult>> {
     // exactly "Good" becomes "Poor" — the conservative choice). The automotive
     // LEFT/RIGHT side is computed deterministically here from the model's two
     // raw observations (vehicleFront + imageSide) — never guessed by the model.
+    // Debug trace (eval harness only): the raw observations + computed side,
+    // so we can tell whether a wrong side came from the MODEL or the geometry.
+    const debugParts: {
+      partName: string;
+      imageSide: ImageSide | null;
+      computedSide: "Left" | "Right" | null;
+    }[] = [];
+
     const data: AIPartOutput[] = rawParts.map((p) => {
       const baseName = (p.partName ?? "Unknown part").trim();
       const side = lateralSide(vehicleFront, p.imageSide);
@@ -125,6 +133,12 @@ export async function POST(req: Request): Promise<NextResponse<AIResult>> {
       const sideUnknown =
         !side && isLateralPart(baseName) && vehicleFront === "unknown";
       if (sideUnknown) lowFields.add("partName");
+
+      debugParts.push({
+        partName,
+        imageSide: p.imageSide ?? null,
+        computedSide: side,
+      });
 
       return {
         partName,
@@ -140,7 +154,10 @@ export async function POST(req: Request): Promise<NextResponse<AIResult>> {
       };
     });
 
-    return NextResponse.json({ ok: true, data });
+    const wantsDebug = new URL(req.url).searchParams.has("debug");
+    return NextResponse.json(
+      wantsDebug ? { ok: true, data, vehicleFront, parts: debugParts } : { ok: true, data }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await alertTeam(`identify route threw: ${msg}`);

@@ -1,0 +1,6 @@
+# Downloaded third-party images are copyright-sensitive — don't commit them.
+# They're reproducible via `node collect.ts` from seed.json / manifest.json.
+images/
+last-run.json
+balanced.json
+label.html
